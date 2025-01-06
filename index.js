@@ -17,7 +17,7 @@ const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
-    serverApi: { 
+    serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
         deprecationErrors: true,
@@ -38,22 +38,49 @@ async function run() {
         app.get('/homeCampaigns', async (req, res) => {
             const currentDate = new Date();
             const result = await campaignCollection.find({
-                deadline: {$gte:currentDate.toISOString().split('T')[0]}
+                deadline: { $gte: currentDate.toISOString().split('T')[0] }
             }).toArray()
             res.send(result)
         })
         // all campaigns
         app.get('/campaigns', async (req, res) => {
-            const cursor = campaignCollection.find()
-            const result = await cursor.toArray();
-            res.send(result)
+            const { sort } = req.query; // Fetch sort order from query params
+            console.log('Sort Order:', sort);
+
+            // Determine sort direction
+            const sortOrder = sort === "Low to High" ? 1 : sort === "High to Low" ? -1 : null;
+
+            if (sortOrder !== null) {
+                // Use aggregation to handle numeric sorting
+                const result = await campaignCollection.aggregate([
+                    {
+                        //ad new field
+                        $addFields: {
+                            // convert string to number
+                            amountNumeric: { $toDouble: "$amount" }, 
+                        },
+                    },
+                    {
+                        // sort by numeric value
+                        $sort: {
+                            amountNumeric: sortOrder,
+                        },
+                    },
+                ]).toArray();
+
+                res.send(result);
+            } else {
+                // Default fetch without sorting
+                const result = await campaignCollection.find().toArray();
+                res.send(result);
+            }
         })
 
         //// get campaign emails
 
         app.get('/myCampaigns', async (req, res) => {
             const email = req.query.email;
-        
+
             const query = { email: email };
             const result = await campaignCollection.find(query).toArray();
             res.send(result);
@@ -67,7 +94,7 @@ async function run() {
             const result = await campaignCollection.findOne(query);
             res.send(result)
         })
- 
+
 
 
 
@@ -80,19 +107,19 @@ async function run() {
 
         // Update
 
-        app.patch("/campaign/:id", async ( req, res ) => {
+        app.patch("/campaign/:id", async (req, res) => {
             const id = req.params.id;
             const data = req.body;
             const query = { _id: new ObjectId(id) };
             const options = { upsert: true };
             const update = {
-                $set:{
+                $set: {
                     image: data?.image,
                     title: data?.title,
                     type: data?.type,
                     description: data?.description,
                     amount: data?.amount,
-                    deadline:data?.deadline
+                    deadline: data?.deadline
                 }
             }
             const result = await campaignCollection.updateOne(query, update, options);
@@ -127,7 +154,7 @@ async function run() {
 
         app.get('/myDonations', async (req, res) => {
             const email = req.query.email;
-        
+
             const query = { donatedUserEmail: email };
             const result = await donatedCollection.find(query).toArray();
             res.send(result);
